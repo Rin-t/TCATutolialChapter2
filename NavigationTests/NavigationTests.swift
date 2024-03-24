@@ -5,32 +5,86 @@
 //  Created by Rin on 2024/03/23.
 //
 
+import ComposableArchitecture
 import XCTest
 @testable import Navigation
 
+@MainActor
 final class NavigationTests: XCTestCase {
 
-    override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-    }
+    func testAppFlow() async {
+        let store = TestStore(initialState: ContactsFeature.State()) {
+            ContactsFeature()
+        } withDependencies: {
+            $0.uuid = .incrementing
+        }
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-    }
+        await store.send(.addButtonTapped) {
+            $0.destination = .addContact(
+                AddContactFeature.State(
+                    contact: Contact(id: UUID(0), name: "")
+                )
+            )
+        }
 
-    func testExample() throws {
-        // This is an example of a functional test case.
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // Any test you write for XCTest can be annotated as throws and async.
-        // Mark your test throws to produce an unexpected failure when your test encounters an uncaught error.
-        // Mark your test async to allow awaiting for asynchronous code to complete. Check the results with assertions afterwards.
-    }
+        await store.send(\.destination.addContact.setName, "Blob Jr.") {
+            $0.destination?.addContact?.contact.name = "Blob Jr."
+        }
 
-    func testPerformanceExample() throws {
-        // This is an example of a performance test case.
-        self.measure {
-            // Put the code you want to measure the time of here.
+        await store.send(\.destination.addContact.saveButtonTapped)
+
+        await store.receive(
+            \.destination.addContact.delegate.saveContact,
+             Contact(id: UUID(0), name: "Blob Jr.")
+        ) {
+            $0.contacts = [
+                Contact(id: UUID(0), name: "Blob Jr.")
+            ]
+        }
+
+        await store.receive(\.destination.dismiss) {
+            $0.destination = nil
         }
     }
 
+    func testAddFlow_NonExhaustive() async {
+        let store = TestStore(initialState: ContactsFeature.State()) {
+            ContactsFeature()
+        } withDependencies: {
+            $0.uuid = .incrementing
+        }
+        store.exhaustivity = .off
+        await store.send(.addButtonTapped)
+        await store.send(\.destination.addContact.setName, "Blob Jr.")
+        await store.send(\.destination.addContact.saveButtonTapped)
+        await store.skipReceivedActions()
+        store.assert {
+            $0.contacts = [
+                Contact(id: UUID(0), name: "Blob Jr.")
+            ]
+            $0.destination = nil
+        }
+    }
+
+    func testDeleteContact() async {
+        let store = TestStore(
+          initialState: ContactsFeature.State(
+            contacts: [
+              Contact(id: UUID(0), name: "Blob"),
+              Contact(id: UUID(1), name: "Blob Jr."),
+            ]
+          )
+        ) {
+          ContactsFeature()
+        }
+
+        await store.send(.delegateButtonTapped(id: UUID(1))) {
+            $0.destination = .alert(.deleteConfirmation(id: UUID(1)))
+        }
+
+        await store.send(.destination(.presented(.alert(.confirmDeletion(id: UUID(1)))))) {
+            $0.contacts.remove(id: UUID(1))
+            $0.destination = nil
+        }
+      }
 }
