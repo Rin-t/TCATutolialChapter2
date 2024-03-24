@@ -13,7 +13,7 @@ struct ContactsView: View {
     @Bindable var store: StoreOf<ContactsFeature>
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $store.scope(state: \.path, action: \.path)) {
             List {
                 ForEach(store.contacts) { contact in
                     HStack {
@@ -38,6 +38,8 @@ struct ContactsView: View {
                     }
                 }
             }
+        } destination: { store in
+            ContactDetailView(store: store)
         }
         .sheet(
             item: $store.scope(state: \.destination?.addContact, action: \.destination.addContact)
